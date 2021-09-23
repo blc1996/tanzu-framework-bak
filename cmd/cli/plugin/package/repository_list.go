@@ -46,10 +46,10 @@ func repositoryList(cmd *cobra.Command, _ []string) error {
 
 	if repoOp.AllNamespaces {
 		t, err = component.NewOutputWriterWithSpinner(cmd.OutOrStdout(), outputFormat,
-			"Retrieving repositories...", true, "NAME", "REPOSITORY", "STATUS", "DETAILS", "NAMESPACE")
+			"Retrieving repositories...", true, "NAME", "REPOSITORY", "TAG", "STATUS", "DETAILS", "NAMESPACE")
 	} else {
 		t, err = component.NewOutputWriterWithSpinner(cmd.OutOrStdout(), outputFormat, "Retrieving repositories...", true,
-			"NAME", "REPOSITORY", "STATUS", "DETAILS")
+			"NAME", "REPOSITORY", "TAG", "STATUS", "DETAILS")
 	}
 	if err != nil {
 		return err
@@ -69,17 +69,24 @@ func repositoryList(cmd *cobra.Command, _ []string) error {
 		if len(details) > tkgpackagedatamodel.ShortDescriptionMaxLength {
 			details = fmt.Sprintf("%s...", details[:tkgpackagedatamodel.ShortDescriptionMaxLength])
 		}
+		repository, tag, _ := tkgpackageclient.ParseImageUrl(packageRepository.Spec.Fetch.ImgpkgBundle.Image)
+		if tag == "" {
+			tag = "latest release tag"
+		}
+
 		if repoOp.AllNamespaces {
 			t.AddRow(
 				packageRepository.Name,
-				packageRepository.Spec.Fetch.ImgpkgBundle.Image,
+				repository,
+				tag,
 				status,
 				details,
 				packageRepository.Namespace)
 		} else {
 			t.AddRow(
 				packageRepository.Name,
-				packageRepository.Spec.Fetch.ImgpkgBundle.Image,
+				repository,
+				tag,
 				status,
 				details)
 		}
