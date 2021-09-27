@@ -25,18 +25,13 @@ func (p *pkgClient) UpdateRepository(o *tkgpackagedatamodel.RepositoryOptions) e
 			return err
 		}
 
-		_, tag, err := parseImageUrl(o.RepositoryURL)
+		_, tag, err := parseRegistryImageUrl(o.RepositoryURL)
 		if err != nil {
 			return errors.Wrap(err, "failed to parse OCI registry URL")
 		}
 
-		found, err := checkPackageRepositoryTagselection()
-		if err != nil {
-			return errors.Wrap(err, "failed to check package repository resource version")
-		}
-
 		repositoryToUpdate.Spec.Fetch.ImgpkgBundle.Image = o.RepositoryURL
-		if found && tag == ""  {
+		if tag == "" {
 			repositoryToUpdate.Spec.Fetch.ImgpkgBundle.TagSelection = &versions.VersionSelection{
 				Semver: &versions.VersionSelectionSemver{
 					Constraints: defaultImageTagConstraint,
@@ -78,4 +73,3 @@ func (p *pkgClient) validateRepositoryUpdate(repositoryName, repositoryImg, name
 
 	return nil
 }
-

@@ -10,9 +10,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	versions "github.com/vmware-tanzu/carvel-vendir/pkg/vendir/versions/v1alpha1"
 	kappctrl "github.com/vmware-tanzu/carvel-kapp-controller/pkg/apis/kappctrl/v1alpha1"
 	kappipkg "github.com/vmware-tanzu/carvel-kapp-controller/pkg/apis/packaging/v1alpha1"
+	versions "github.com/vmware-tanzu/carvel-vendir/pkg/vendir/versions/v1alpha1"
 	"github.com/vmware-tanzu/tanzu-framework/pkg/v1/tkg/tkgpackagedatamodel"
 )
 
@@ -29,7 +29,7 @@ func (p *pkgClient) AddRepository(o *tkgpackagedatamodel.RepositoryOptions) erro
 	}
 
 	newPackageRepo, err := p.newPackageRepository(o.RepositoryName, o.RepositoryURL, o.Namespace)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 
@@ -50,17 +50,12 @@ func (p *pkgClient) newPackageRepository(repositoryName, repositoryImg, namespac
 		}},
 	}
 
-	_, tag, err := parseImageUrl(repositoryImg)
+	_, tag, err := parseRegistryImageUrl(repositoryImg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse OCI registry URL")
 	}
 
-	found, err := checkPackageRepositoryTagselection()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to check package repository resource version")
-	}
-
-	if found && tag == ""  {
+	if tag == "" {
 		pkgr.Spec.Fetch.ImgpkgBundle.TagSelection = &versions.VersionSelection{
 			Semver: &versions.VersionSelectionSemver{
 				Constraints: defaultImageTagConstraint,
