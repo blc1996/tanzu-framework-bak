@@ -26,24 +26,29 @@ import (
 )
 
 type PackagePluginConfig struct {
-	UseExistingCluster   bool   `json:"use-existing-cluster"`
-	Namespace            string `json:"namespace"`
-	PackageName          string `json:"package-name"`
-	PackageVersion       string `json:"package-version"`
-	PackageVersionUpdate string `json:"package-version-update"`
-	RepositoryName       string `json:"repository-name"`
-	RepositoryURL        string `json:"repository-url"`
-	ClusterNameMC        string `json:"mc-cluster-name"`
-	ClusterNameWLC       string `json:"wlc-cluster-name"`
-	KubeConfigPathMC     string `json:"mc-kubeconfig-Path"`
-	KubeConfigPathWLC    string `json:"wlc-kubeconfig-Path"`
-	WithValueFile        bool   `json:"with-value-file"`
+	UseExistingCluster    bool   `json:"use-existing-cluster"`
+	Namespace             string `json:"namespace"`
+	PackageName           string `json:"package-name"`
+	PackageVersion        string `json:"package-version"`
+	PackageVersionUpdate  string `json:"package-version-update"`
+	RepositoryName        string `json:"repository-name"`
+	RepositoryURL         string `json:"repository-url"`
+	RepositoryURLNoTag    string `json:"repository-url-no-tag"`
+	RepositoryOriginalTag string `json:"repository-original-tag"`
+	RepositoryLatestTag   string `json:"repository-latest-tag"`
+	ClusterNameMC         string `json:"mc-cluster-name"`
+	ClusterNameWLC        string `json:"wlc-cluster-name"`
+	KubeConfigPathMC      string `json:"mc-kubeconfig-Path"`
+	KubeConfigPathWLC     string `json:"wlc-kubeconfig-Path"`
+	WithValueFile         bool   `json:"with-value-file"`
 }
 
 type repositoryOutput struct {
 	Name       string `json:"name"`
 	Repository string `json:"repository"`
+	Tag        string `json:"tag"`
 	Status     string `json:"status"`
+	Namespace  string `json:"namespace"`
 }
 
 type packageInstalledOutput struct {
@@ -58,30 +63,31 @@ type packageAvailableOutput struct {
 }
 
 var (
-	config                 = &PackagePluginConfig{}
-	configPath             string
-	tkgCfgDir              string
-	err                    error
-	packagePlugin          packagelib.PackagePlugin
-	result                 packagelib.PackagePluginResult
-	clusterCreationTimeout = 30 * time.Minute
-	pollInterval           = 15 * time.Second
-	pollTimeout            = 10 * time.Minute
-	standardRepoName       = "tanzu-standard"
-	standardNamespace      = "tanzu-package-repo-global"
-	standardRepoURL        = "projects-stg.registry.vmware.com/tkg/packageplugin/standard/repo:v1.4.0-zshippable"
-	testPkgInstallName     = "test-pkg"
-	testPkgName            = "fluent-bit.tanzu.vmware.com"
-	testPkgVersion         = "1.7.5+vmware.1-tkg.1-zshippable"
-	testPkgVersionUpdate   = "1.7.5+vmware.1-tkg.1-zshippable"
-	pkgAvailableOptions    tkgpackagedatamodel.PackageAvailableOptions
-	pkgOptions             tkgpackagedatamodel.PackageOptions
-	repoOptions            tkgpackagedatamodel.RepositoryOptions
-	repoOutput             []repositoryOutput
-	expectedRepoOutput     repositoryOutput
-	pkgOutput              []packageInstalledOutput
-	expectedPkgOutput      packageInstalledOutput
-	pkgAvailableOutput     []packageAvailableOutput
+	config                      = &PackagePluginConfig{}
+	configPath                  string
+	tkgCfgDir                   string
+	err                         error
+	packagePlugin               packagelib.PackagePlugin
+	result                      packagelib.PackagePluginResult
+	clusterCreationTimeout      = 30 * time.Minute
+	pollInterval                = 15 * time.Second
+	pollTimeout                 = 10 * time.Minute
+	standardRepoName            = "tanzu-standard"
+	standardNamespace           = "tanzu-package-repo-global"
+	standardRepoURL             = "projects-stg.registry.vmware.com/tkg/packageplugin/standard/repo:v1.4.0-zshippable"
+	testPkgInstallName          = "test-pkg"
+	testPkgName                 = "fluent-bit.tanzu.vmware.com"
+	testPkgVersion              = "1.7.5+vmware.1-tkg.1-zshippable"
+	testPkgVersionUpdate        = "1.7.5+vmware.1-tkg.1-zshippable"
+	pkgAvailableOptions         tkgpackagedatamodel.PackageAvailableOptions
+	pkgOptions                  tkgpackagedatamodel.PackageOptions
+	repoOptions                 tkgpackagedatamodel.RepositoryOptions
+	repoOutput                  []repositoryOutput
+	expectedRepoOutput          repositoryOutput
+	expectedRepoOutputLatestTag repositoryOutput
+	pkgOutput                   []packageInstalledOutput
+	expectedPkgOutput           packageInstalledOutput
+	pkgAvailableOutput          []packageAvailableOutput
 )
 
 var _ = Describe("Package plugin integration test", func() {
@@ -220,7 +226,18 @@ var _ = Describe("Package plugin integration test", func() {
 		expectedRepoOutput = repositoryOutput{
 			Name:       config.RepositoryName,
 			Repository: config.RepositoryURL,
+			Tag:        config.RepositoryOriginalTag,
 			Status:     "Reconcile succeeded",
+			Namespace:  config.Namespace,
+		}
+
+		expectedRepoOutputLatestTag = repositoryOutput{
+			Name:       config.RepositoryName,
+			Repository: config.RepositoryURL,
+			// TODO: change Tag to config.RepositoryLatestTag after kapp controller is bumped to 0.25
+			Tag:       "latest",
+			Status:    "Reconcile succeeded",
+			Namespace: config.Namespace,
 		}
 
 		expectedPkgOutput = packageInstalledOutput{
@@ -262,10 +279,27 @@ func testHelper() {
 	err = json.Unmarshal(result.Stdout.Bytes(), &repoOutput)
 	Expect(err).ToNot(HaveOccurred())
 
-	By("update package repository")
-	repoOptions.RepositoryURL = config.RepositoryURL
+	By("update package repository with a new URL without tag")
+	repoOptions.RepositoryURL = config.RepositoryURLNoTag
 	repoOptions.CreateRepository = true
 	repoOptions.CreateNamespace = true
+	result = packagePlugin.UpdateRepository(&repoOptions)
+	Expect(result.Error).ToNot(HaveOccurred())
+
+	By("wait for package repository reconciliation")
+	result = packagePlugin.CheckRepositoryAvailable(&repoOptions)
+	Expect(result.Error).ToNot(HaveOccurred())
+
+	By("get package repository")
+	result = packagePlugin.GetRepository(&repoOptions)
+	Expect(result.Error).ToNot(HaveOccurred())
+	err = json.Unmarshal(result.Stdout.Bytes(), &repoOutput)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(len(repoOutput)).To(BeNumerically("==", 1))
+	Expect(repoOutput[0]).To(Equal(expectedRepoOutputLatestTag))
+
+	By("update package repository with a new URL")
+	repoOptions.RepositoryURL = config.RepositoryURL
 	result = packagePlugin.UpdateRepository(&repoOptions)
 	Expect(result.Error).ToNot(HaveOccurred())
 
